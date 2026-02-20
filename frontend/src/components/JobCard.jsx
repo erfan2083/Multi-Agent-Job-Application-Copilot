@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { updateJobStatus } from "../api";
+import { useState, useRef } from "react";
+import { updateJobStatus, markJobViewed } from "../api";
 
 const SITE_LABELS = {
   jobinja: "Jobinja",
@@ -22,9 +22,24 @@ function getSiteBadgeClass(site) {
   return `badge badge-${site}`;
 }
 
-function JobCard({ job }) {
+function JobCard({ job, compact = false }) {
   const [status, setStatus] = useState(job.status || "new");
   const [expanded, setExpanded] = useState(false);
+  const [viewed, setViewed] = useState(!!job.viewed_at);
+  const viewedRef = useRef(!!job.viewed_at);
+
+  const handleViewClick = async () => {
+    // Track view on first click
+    if (!viewedRef.current && job.id) {
+      viewedRef.current = true;
+      setViewed(true);
+      try {
+        await markJobViewed(job.id);
+      } catch {
+        // Ignore
+      }
+    }
+  };
 
   const handleSave = async () => {
     const newStatus = status === "saved" ? "new" : "saved";
@@ -57,13 +72,26 @@ function JobCard({ job }) {
   return (
     <div
       className={`bg-white rounded-xl border p-4 transition-shadow hover:shadow-md ${
-        status === "saved" ? "border-brand-300 bg-brand-50/30" : "border-gray-200"
+        status === "saved"
+          ? "border-brand-300 bg-brand-50/30"
+          : "border-gray-200"
       }`}
     >
+      {/* New badge for alerts */}
+      {job.is_new && (
+        <span className="inline-block bg-brand-100 text-brand-700 text-[10px] font-bold px-1.5 py-0.5 rounded mb-2">
+          جدید
+        </span>
+      )}
+
       {/* Top row: title + score */}
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-gray-900 text-sm leading-tight truncate">
+          <h3
+            className={`font-bold text-sm leading-tight truncate ${
+              viewed ? "text-gray-500" : "text-gray-900"
+            }`}
+          >
             {job.title}
           </h3>
           <p className="text-sm text-gray-600 mt-0.5">{job.company}</p>
@@ -102,10 +130,14 @@ function JobCard({ job }) {
             {job.salary_range}
           </span>
         )}
+
+        {viewed && (
+          <span className="badge bg-gray-50 text-gray-400">مشاهده شده</span>
+        )}
       </div>
 
       {/* Match reason */}
-      {job.match_reason && (
+      {job.match_reason && !compact && (
         <p className="text-xs text-gray-500 mb-3 leading-relaxed line-clamp-2">
           {job.match_reason}
         </p>
@@ -126,6 +158,7 @@ function JobCard({ job }) {
           href={job.url}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={handleViewClick}
           className="flex-1 text-center bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition-colors"
         >
           مشاهده آگهی
@@ -155,47 +188,51 @@ function JobCard({ job }) {
           </svg>
         </button>
 
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-          title="جزئیات"
-        >
-          <svg
-            className={`w-4 h-4 transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
-        </button>
+        {!compact && (
+          <>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+              title="جزئیات"
+            >
+              <svg
+                className={`w-4 h-4 transition-transform ${
+                  expanded ? "rotate-180" : ""
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
 
-        <button
-          onClick={handleDismiss}
-          className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
-          title="رد کردن"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            <button
+              onClick={handleDismiss}
+              className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
+              title="رد کردن"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

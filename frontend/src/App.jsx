@@ -3,7 +3,9 @@ import ChatInterface from "./components/ChatInterface";
 import ResumeUpload from "./components/ResumeUpload";
 import JobDashboard from "./components/JobDashboard";
 import StatusStream from "./components/StatusStream";
-import { searchJobs, checkHealth } from "./api";
+import SavedSearches from "./components/SavedSearches";
+import AlertsPanel from "./components/AlertsPanel";
+import { searchJobs, checkHealth, getAlertCount } from "./api";
 
 function App() {
   const [resume, setResume] = useState(null);
@@ -16,11 +18,24 @@ function App() {
   const [report, setReport] = useState("");
   const [backendOk, setBackendOk] = useState(null);
   const [activeTab, setActiveTab] = useState("chat");
+  const [alertCount, setAlertCount] = useState(0);
 
   useEffect(() => {
     checkHealth()
       .then(() => setBackendOk(true))
       .catch(() => setBackendOk(false));
+  }, []);
+
+  // Periodically check alert count
+  useEffect(() => {
+    const loadAlertCount = () => {
+      getAlertCount()
+        .then((data) => setAlertCount(data.unread_count))
+        .catch(() => {});
+    };
+    loadAlertCount();
+    const interval = setInterval(loadAlertCount, 60000); // Every 60s
+    return () => clearInterval(interval);
   }, []);
 
   const handleResumeUploaded = (data) => {
@@ -88,8 +103,25 @@ function App() {
     }
   };
 
+  const handleSavedSearchRun = (search) => {
+    setActiveTab("dashboard");
+    setJobs([]);
+    setIsSearching(true);
+    setStatusMessages((prev) => [
+      ...prev,
+      {
+        type: "status",
+        message: `اجرای مجدد جستجوی ذخیره‌شده: ${search.name}...`,
+      },
+    ]);
+  };
+
+  const handleSavedSearchJobs = (jobData) => {
+    setJobs((prev) => [...prev, jobData]);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" dir="rtl">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -149,6 +181,31 @@ function App() {
             {jobs.length > 0 && (
               <span className="mr-1 bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded-full text-xs">
                 {jobs.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("saved")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "saved"
+                ? "bg-white text-brand-700 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            جستجوهای ذخیره‌شده
+          </button>
+          <button
+            onClick={() => setActiveTab("alerts")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
+              activeTab === "alerts"
+                ? "bg-white text-brand-700 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            هشدارها
+            {alertCount > 0 && (
+              <span className="mr-1 bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full text-xs font-bold">
+                {alertCount}
               </span>
             )}
           </button>
@@ -225,6 +282,43 @@ function App() {
               resumeId={resume?.id}
             />
           </div>
+        )}
+
+        {activeTab === "saved" && (
+          <div className="max-w-2xl mx-auto">
+            <SavedSearches
+              resumeId={resume?.id}
+              preferencesId={preferencesId}
+              onRunSearch={handleSavedSearchRun}
+              onJobsFound={handleSavedSearchJobs}
+            />
+
+            {!resume && (
+              <div className="text-center py-16">
+                <svg
+                  className="w-16 h-16 text-gray-300 mx-auto mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1}
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  />
+                </svg>
+                <p className="text-gray-500">
+                  ابتدا رزومه خود را آپلود کرده و جستجو انجام دهید تا بتوانید
+                  جستجوها را ذخیره کنید.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "alerts" && (
+          <AlertsPanel onAlertCountChange={setAlertCount} />
         )}
       </main>
     </div>

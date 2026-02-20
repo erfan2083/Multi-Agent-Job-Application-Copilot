@@ -112,3 +112,64 @@ class ChatMessage(BaseModel):
 class SearchRequest(BaseModel):
     resume_id: int
     preferences_id: Optional[int] = None
+
+
+# ── Phase 2: Saved Searches & Alerts ──────────────────────────────
+
+class SavedSearchIn(BaseModel):
+    resume_id: int
+    preferences_id: Optional[int] = None
+    name: str = ""
+    keywords: list[str] = []
+    persian_keywords: list[str] = []
+    locations: list[str] = []
+    job_type: str = ""
+    min_salary: Optional[int] = None
+    preferred_sites: list[str] = []
+
+
+class SavedSearchOut(BaseModel):
+    id: int
+    resume_id: int
+    preferences_id: Optional[int]
+    name: str
+    keywords: list[str]
+    persian_keywords: list[str]
+    locations: list[str]
+    job_type: str
+    min_salary: Optional[int]
+    preferred_sites: list[str]
+    is_active: bool
+    last_run_at: Optional[datetime]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SavedSearchUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+    keywords: Optional[list[str]] = None
+    persian_keywords: Optional[list[str]] = None
+    locations: Optional[list[str]] = None
+    job_type: Optional[str] = None
+    min_salary: Optional[int] = None
+    preferred_sites: Optional[list[str]] = None
+
+
+class JobAlertOut(BaseModel):
+    id: int
+    saved_search_id: int
+    job_id: int
+    is_read: bool
+    created_at: datetime
+    job: Optional[JobListingOut] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ExportRequest(BaseModel):
+    resume_id: Optional[int] = None
+    min_score: int = 0
+    source: Optional[str] = None
+    status: Optional[str] = None

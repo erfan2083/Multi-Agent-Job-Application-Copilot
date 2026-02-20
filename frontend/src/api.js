@@ -153,3 +153,168 @@ export async function checkHealth() {
   if (!res.ok) throw new Error("Backend unavailable");
   return res.json();
 }
+
+// ── Phase 2: Saved Searches ──────────────────────────────────────
+
+/**
+ * Create a saved search.
+ */
+export async function createSavedSearch(data) {
+  const res = await fetch(`${BASE_URL}/saved-searches`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to save search");
+  return res.json();
+}
+
+/**
+ * List all saved searches, optionally filtered by resume.
+ */
+export async function getSavedSearches(resumeId) {
+  const params = new URLSearchParams();
+  if (resumeId) params.set("resume_id", resumeId);
+  const res = await fetch(`${BASE_URL}/saved-searches?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch saved searches");
+  return res.json();
+}
+
+/**
+ * Update a saved search.
+ */
+export async function updateSavedSearch(searchId, data) {
+  const res = await fetch(`${BASE_URL}/saved-searches/${searchId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update saved search");
+  return res.json();
+}
+
+/**
+ * Delete a saved search.
+ */
+export async function deleteSavedSearch(searchId) {
+  const res = await fetch(`${BASE_URL}/saved-searches/${searchId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete saved search");
+  return res.json();
+}
+
+/**
+ * Re-run a saved search (SSE stream).
+ */
+export async function runSavedSearch(searchId, onEvent) {
+  const res = await fetch(`${BASE_URL}/saved-searches/${searchId}/run`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to run saved search");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          onEvent(JSON.parse(line.slice(6)));
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  }
+
+  if (buffer.startsWith("data: ")) {
+    try {
+      onEvent(JSON.parse(buffer.slice(6)));
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+// ── Phase 2: Alerts ──────────────────────────────────────────────
+
+/**
+ * Get alerts, optionally filtered.
+ */
+export async function getAlerts({ savedSearchId, unreadOnly } = {}) {
+  const params = new URLSearchParams();
+  if (savedSearchId) params.set("saved_search_id", savedSearchId);
+  if (unreadOnly) params.set("unread_only", "true");
+  const res = await fetch(`${BASE_URL}/alerts?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch alerts");
+  return res.json();
+}
+
+/**
+ * Get unread alert count.
+ */
+export async function getAlertCount() {
+  const res = await fetch(`${BASE_URL}/alerts/count`);
+  if (!res.ok) throw new Error("Failed to fetch alert count");
+  return res.json();
+}
+
+/**
+ * Mark a single alert as read.
+ */
+export async function markAlertRead(alertId) {
+  const res = await fetch(`${BASE_URL}/alerts/${alertId}/read`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error("Failed to mark alert as read");
+  return res.json();
+}
+
+/**
+ * Mark all alerts as read.
+ */
+export async function markAllAlertsRead(savedSearchId) {
+  const params = new URLSearchParams();
+  if (savedSearchId) params.set("saved_search_id", savedSearchId);
+  const res = await fetch(`${BASE_URL}/alerts/mark-all-read?${params}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to mark all alerts as read");
+  return res.json();
+}
+
+// ── Phase 2: Job Tracking ────────────────────────────────────────
+
+/**
+ * Mark a job as viewed (records timestamp).
+ */
+export async function markJobViewed(jobId) {
+  const res = await fetch(`${BASE_URL}/jobs/${jobId}/view`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to mark job as viewed");
+  return res.json();
+}
+
+// ── Phase 2: CSV Export ──────────────────────────────────────────
+
+/**
+ * Get the CSV export URL with filters.
+ */
+export function getExportCsvUrl({ resumeId, minScore, source, status } = {}) {
+  const params = new URLSearchParams();
+  if (resumeId) params.set("resume_id", resumeId);
+  if (minScore) params.set("min_score", minScore);
+  if (source) params.set("source", source);
+  if (status) params.set("status", status);
+  return `${BASE_URL}/export/csv?${params}`;
+}
