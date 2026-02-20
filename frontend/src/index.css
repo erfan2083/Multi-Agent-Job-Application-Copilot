@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Vazirmatn", system-ui, -apple-system, sans-serif;
+}
+
+/* RTL support for chat messages */
+.rtl {
+  direction: rtl;
+  text-align: right;
+}
+
+.ltr {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Score badge colors */
+.score-high {
+  @apply bg-green-100 text-green-800 border-green-300;
+}
+
+.score-mid {
+  @apply bg-yellow-100 text-yellow-800 border-yellow-300;
+}
+
+.score-low {
+  @apply bg-red-100 text-red-800 border-red-300;
+}
+
+/* Source site badges */
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+}
+
+.badge-jobinja {
+  @apply bg-purple-100 text-purple-800;
+}
+
+.badge-irantalent {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.badge-jobvision {
+  @apply bg-teal-100 text-teal-800;
+}
+
+.badge-linkedin {
+  @apply bg-sky-100 text-sky-800;
+}
+
+.badge-indeed {
+  @apply bg-indigo-100 text-indigo-800;
+}
+
+.badge-remotive {
+  @apply bg-emerald-100 text-emerald-800;
+}
+
+.badge-weworkremotely {
+  @apply bg-orange-100 text-orange-800;
+}
+
+.badge-wellfound {
+  @apply bg-rose-100 text-rose-800;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Pulse animation for loading */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.4s infinite;
+}
+
+.pulse-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.pulse-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
