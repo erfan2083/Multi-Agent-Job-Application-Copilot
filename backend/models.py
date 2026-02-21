@@ -173,3 +173,27 @@ class ExportRequest(BaseModel):
     min_score: int = 0
     source: Optional[str] = None
     status: Optional[str] = None
+
+
+# ── Phase 3: Applications & Auto-Apply ─────────────────────────────
+
+class ApplyRequest(BaseModel):
+    job_id: int
+    resume_id: int
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_id: int
+    applied_at: Optional[datetime]
+    method: str
+    status: str
+    notes: str
+
+    model_config = {"from_attributes": True}
+
+
+# ── LLM Provider ────────────────────────────────────────────────────
+
+class LLMProviderSwitch(BaseModel):
+    provider: str  # "claude", "openai" / "chatgpt"

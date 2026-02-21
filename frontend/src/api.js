@@ -318,3 +318,63 @@ export function getExportCsvUrl({ resumeId, minScore, source, status } = {}) {
   if (status) params.set("status", status);
   return `${BASE_URL}/export/csv?${params}`;
 }
+
+// ── Phase 3: Auto-Apply ─────────────────────────────────────────
+
+/**
+ * Auto-apply to a job (requires user confirmation first).
+ */
+export async function applyToJob(jobId, resumeId) {
+  const res = await fetch(`${BASE_URL}/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, resume_id: resumeId }),
+  });
+  if (!res.ok) throw new Error("Auto-apply failed");
+  return res.json();
+}
+
+/**
+ * List application records.
+ */
+export async function getApplications({ jobId, status } = {}) {
+  const params = new URLSearchParams();
+  if (jobId) params.set("job_id", jobId);
+  if (status) params.set("status", status);
+  const res = await fetch(`${BASE_URL}/applications?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch applications");
+  return res.json();
+}
+
+/**
+ * Get list of sites that support auto-apply.
+ */
+export async function getAutoApplySites() {
+  const res = await fetch(`${BASE_URL}/apply/supported-sites`);
+  if (!res.ok) throw new Error("Failed to fetch supported sites");
+  return res.json();
+}
+
+// ── LLM Provider ────────────────────────────────────────────────
+
+/**
+ * Get current LLM provider status.
+ */
+export async function getLLMStatus() {
+  const res = await fetch(`${BASE_URL}/llm/status`);
+  if (!res.ok) throw new Error("Failed to fetch LLM status");
+  return res.json();
+}
+
+/**
+ * Switch the active LLM provider.
+ */
+export async function switchLLMProvider(provider) {
+  const res = await fetch(`${BASE_URL}/llm/switch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+  if (!res.ok) throw new Error("Failed to switch LLM provider");
+  return res.json();
+}

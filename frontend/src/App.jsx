@@ -5,6 +5,8 @@ import JobDashboard from "./components/JobDashboard";
 import StatusStream from "./components/StatusStream";
 import SavedSearches from "./components/SavedSearches";
 import AlertsPanel from "./components/AlertsPanel";
+import ApplicationsPanel from "./components/ApplicationsPanel";
+import LLMSelector from "./components/LLMSelector";
 import { searchJobs, checkHealth, getAlertCount } from "./api";
 
 function App() {
@@ -139,7 +141,8 @@ function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <LLMSelector />
             {backendOk === true && (
               <span className="inline-flex items-center gap-1 text-sm text-green-700 bg-green-50 px-2 py-1 rounded-full">
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
@@ -208,6 +211,16 @@ function App() {
                 {alertCount}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab("applications")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "applications"
+                ? "bg-white text-brand-700 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            درخواست‌ها
           </button>
         </div>
       </div>
@@ -320,6 +333,8 @@ function App() {
         {activeTab === "alerts" && (
           <AlertsPanel onAlertCountChange={setAlertCount} />
         )}
+
+        {activeTab === "applications" && <ApplicationsPanel />}
       </main>
     </div>
   );

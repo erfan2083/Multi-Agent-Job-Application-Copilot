@@ -1,11 +1,11 @@
-"""Query builder — generates search queries from profile and preferences using Claude or rules."""
+"""Query builder — generates search queries from profile and preferences using LLM or rules."""
 
 from __future__ import annotations
 
 import json
 import logging
 
-from backend.claude_session import ClaudeSession
+from backend.llm_provider import BaseLLMProvider
 from backend.models import SearchQueries
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ Return ONLY valid JSON, no extra text:
 
 
 async def build_search_queries(
-    claude: ClaudeSession | None,
+    claude: BaseLLMProvider | None,
     profile: dict,
     preferences_text: str,
 ) -> SearchQueries:
