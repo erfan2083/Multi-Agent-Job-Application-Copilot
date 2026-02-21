@@ -120,6 +120,8 @@ class JobListing(Base):
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
     status = Column(String(20), default="new")
+    saved_at = Column(DateTime, nullable=True)
+    viewed_at = Column(DateTime, nullable=True)
 
 
 class Application(Base):
@@ -131,6 +133,54 @@ class Application(Base):
     method = Column(Text, default="manual")
     status = Column(Text, default="pending")
     notes = Column(Text, default="")
+
+
+class SavedSearch(Base):
+    """Persisted search configuration that can be re-run and checked for new matches."""
+
+    __tablename__ = "saved_searches"
+
+    id = Column(Integer, primary_key=True)
+    resume_id = Column(Integer, nullable=False)
+    preferences_id = Column(Integer, nullable=True)
+    name = Column(Text, default="")
+    keywords = Column(Text, default="[]")  # JSON array
+    persian_keywords = Column(Text, default="[]")  # JSON array
+    locations = Column(Text, default="[]")  # JSON array
+    job_type = Column(Text, default="")
+    min_salary = Column(Integer, nullable=True)
+    preferred_sites = Column(Text, default="[]")  # JSON array
+    is_active = Column(Boolean, default=True)
+    last_run_at = Column(DateTime, nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    def get_keywords(self) -> list[str]:
+        return json.loads(self.keywords or "[]")
+
+    def get_persian_keywords(self) -> list[str]:
+        return json.loads(self.persian_keywords or "[]")
+
+    def get_locations(self) -> list[str]:
+        return json.loads(self.locations or "[]")
+
+    def get_preferred_sites(self) -> list[str]:
+        return json.loads(self.preferred_sites or "[]")
+
+
+class JobAlert(Base):
+    """Tracks new job matches found since the last time a saved search was checked."""
+
+    __tablename__ = "job_alerts"
+
+    id = Column(Integer, primary_key=True)
+    saved_search_id = Column(Integer, nullable=False)
+    job_id = Column(Integer, nullable=False)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
 
 
 # ── Engine & session factory ────────────────────────────────────────

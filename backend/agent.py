@@ -7,9 +7,18 @@ import json
 import logging
 from typing import Any, AsyncIterator
 
+from datetime import datetime, timezone
+
 from backend.claude_session import ClaudeSession, fallback_parse_resume
 from backend.config import settings
-from backend.database import JobListing, ResumeProfile, SearchPreference, SessionLocal
+from backend.database import (
+    JobAlert,
+    JobListing,
+    ResumeProfile,
+    SavedSearch,
+    SearchPreference,
+    SessionLocal,
+)
 from backend.models import ParsedResume, SearchQueries
 from backend.tools.job_scorer import score_job
 from backend.tools.job_scraper import scrape_all
@@ -451,6 +460,149 @@ class JobHunterAgent:
 
         except Exception as e:
             logger.error(f"Search pipeline error: {e}", exc_info=True)
+            yield {"type": "error", "message": str(e)}
+        finally:
+            db.close()
+
+    # ── Saved Search Re-run (Phase 2) ────────────────────────────────
+
+    async def run_saved_search(
+        self, saved_search_id: int
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Re-run a saved search, finding only NEW jobs not already in the DB.
+
+        Creates JobAlert entries for each new match found.
+        Yields the same event format as search_jobs().
+        """
+        db = SessionLocal()
+        try:
+            search = db.query(SavedSearch).filter_by(id=saved_search_id).first()
+            if not search:
+                yield {"type": "error", "message": "Saved search not found"}
+                return
+
+            resume = db.query(ResumeProfile).filter_by(id=search.resume_id).first()
+            if not resume:
+                yield {"type": "error", "message": "Resume not found"}
+                return
+
+            profile = resume.to_profile_dict()
+            keywords = search.get_keywords()
+            persian_keywords = search.get_persian_keywords()
+            locations = search.get_locations()
+            preferred_sites = search.get_preferred_sites()
+
+            yield {
+                "type": "status",
+                "message": f"اجرای مجدد جستجوی ذخیره‌شده: {search.name}...",
+            }
+
+            # Collect existing URLs to detect truly new jobs
+            existing_urls = set(
+                row[0] for row in db.query(JobListing.url).all()
+            )
+
+            # Run scrapers
+            site_status: dict[str, str] = {}
+
+            def on_start(site: str) -> None:
+                site_status[site] = "searching"
+
+            def on_done(site: str, count: int) -> None:
+                site_status[site] = f"found {count}"
+
+            def on_error(site: str, msg: str) -> None:
+                site_status[site] = f"failed: {msg}"
+
+            yield {
+                "type": "status",
+                "message": "در حال جستجو در سایت‌های کاریابی...",
+            }
+
+            raw_jobs = await scrape_all(
+                keywords=keywords,
+                persian_keywords=persian_keywords,
+                locations=locations,
+                preferred_sites=preferred_sites or None,
+                on_site_start=on_start,
+                on_site_done=on_done,
+                on_site_error=on_error,
+            )
+
+            total_found = len(raw_jobs)
+            yield {
+                "type": "status",
+                "message": f"{total_found} موقعیت شغلی پیدا شد. در حال بررسی تطابق...",
+            }
+
+            new_jobs: list[dict] = []
+            new_alert_count = 0
+
+            for i, job_result in enumerate(raw_jobs):
+                job_dict = job_result.to_dict()
+
+                score_result = await score_job(self.claude, profile, job_dict)
+                job_dict["match_score"] = score_result.score
+                job_dict["match_reason"] = score_result.reason
+
+                if score_result.score >= settings.min_match_score:
+                    is_new = job_dict["url"] not in existing_urls
+
+                    if is_new:
+                        # Save the new job listing
+                        listing = JobListing(
+                            title=job_dict["title"],
+                            company=job_dict["company"],
+                            location=job_dict["location"],
+                            is_remote=job_dict.get("is_remote", False),
+                            salary_range=job_dict.get("salary_range", ""),
+                            description=job_dict.get("description", ""),
+                            url=job_dict["url"],
+                            source_site=job_dict["source_site"],
+                            match_score=score_result.score,
+                            match_reason=score_result.reason,
+                            resume_id=search.resume_id,
+                        )
+                        db.add(listing)
+                        db.flush()  # Get the id
+
+                        # Create an alert
+                        alert = JobAlert(
+                            saved_search_id=saved_search_id,
+                            job_id=listing.id,
+                        )
+                        db.add(alert)
+                        new_alert_count += 1
+
+                        existing_urls.add(job_dict["url"])
+
+                    new_jobs.append(job_dict)
+                    job_dict["is_new"] = is_new
+                    yield {"type": "job", "data": job_dict}
+
+                if (i + 1) % 5 == 0:
+                    yield {
+                        "type": "status",
+                        "message": f"بررسی شد: {i + 1}/{total_found}...",
+                    }
+
+            # Update last_run_at
+            search.last_run_at = datetime.now(timezone.utc)
+            db.commit()
+
+            new_jobs.sort(key=lambda j: j["match_score"], reverse=True)
+            report = await generate_report(self.claude, profile, new_jobs)
+
+            yield {
+                "type": "done",
+                "total": len(new_jobs),
+                "new_alerts": new_alert_count,
+                "report": report,
+                "site_status": site_status,
+            }
+
+        except Exception as e:
+            logger.error(f"Saved search re-run error: {e}", exc_info=True)
             yield {"type": "error", "message": str(e)}
         finally:
             db.close()
