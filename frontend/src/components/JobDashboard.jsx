@@ -23,6 +23,7 @@ const STATUS_OPTIONS = [
   { value: "", label: "همه وضعیت‌ها" },
   { value: "new", label: "جدید" },
   { value: "saved", label: "ذخیره‌شده" },
+  { value: "applied", label: "درخواست‌شده" },
 ];
 
 function JobDashboard({ jobs: streamedJobs, isSearching, resumeId }) {
@@ -81,6 +82,7 @@ function JobDashboard({ jobs: streamedJobs, isSearching, resumeId }) {
   ).length;
   const remotJobs = allJobs.filter((j) => j.is_remote).length;
   const savedJobs = allJobs.filter((j) => j.status === "saved").length;
+  const appliedJobs = allJobs.filter((j) => j.status === "applied").length;
 
   const handleExportCsv = () => {
     const url = getExportCsvUrl({
@@ -96,7 +98,7 @@ function JobDashboard({ jobs: streamedJobs, isSearching, resumeId }) {
     <div>
       {/* Stats bar */}
       {totalJobs > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <div className="text-2xl font-bold text-gray-900">{totalJobs}</div>
             <div className="text-xs text-gray-500">کل مشاغل</div>
@@ -116,6 +118,10 @@ function JobDashboard({ jobs: streamedJobs, isSearching, resumeId }) {
           <div className="bg-white rounded-xl border border-brand-200 p-3 text-center">
             <div className="text-2xl font-bold text-brand-700">{savedJobs}</div>
             <div className="text-xs text-brand-600">ذخیره‌شده</div>
+          </div>
+          <div className="bg-white rounded-xl border border-emerald-200 p-3 text-center">
+            <div className="text-2xl font-bold text-emerald-700">{appliedJobs}</div>
+            <div className="text-xs text-emerald-600">درخواست‌شده</div>
           </div>
         </div>
       )}
@@ -257,7 +263,7 @@ function JobDashboard({ jobs: streamedJobs, isSearching, resumeId }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {displayJobs.map((job, idx) => (
-          <JobCard key={job.url || idx} job={job} />
+          <JobCard key={job.url || idx} job={job} resumeId={resumeId} />
         ))}
       </div>
     </div>

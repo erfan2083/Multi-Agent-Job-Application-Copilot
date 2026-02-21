@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from backend.claude_session import ClaudeSession
+from backend.llm_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ Return a brief text summary (not JSON)."""
 
 
 async def generate_report(
-    claude: ClaudeSession | None,
+    claude: BaseLLMProvider | None,
     profile: dict,
     jobs: list[dict[str, Any]],
 ) -> str:

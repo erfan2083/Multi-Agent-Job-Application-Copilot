@@ -1,10 +1,11 @@
-"""Job match scorer — scores jobs against a candidate profile using Claude or fallback."""
+"""Job match scorer — scores jobs against a candidate profile using LLM or fallback."""
 
 from __future__ import annotations
 
 import logging
 
-from backend.claude_session import ClaudeSession, fallback_score_job
+from backend.claude_session import fallback_score_job
+from backend.llm_provider import BaseLLMProvider
 from backend.models import JobScoreResult
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ Return ONLY valid JSON, no extra text:
 
 
 async def score_job(
-    claude: ClaudeSession | None,
+    claude: BaseLLMProvider | None,
     profile: dict,
     job: dict,
 ) -> JobScoreResult:

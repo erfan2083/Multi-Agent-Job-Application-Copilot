@@ -31,9 +31,11 @@ from backend.database import (
     init_db,
 )
 from backend.models import (
+    ApplyRequest,
     ChatMessage,
     ExportRequest,
     JobListingOut,
+    LLMProviderSwitch,
     PreferencesIn,
     PreferencesOut,
     ResumeProfileOut,
@@ -42,6 +44,11 @@ from backend.models import (
     SavedSearchUpdate,
     SearchRequest,
 )
+from backend.tools.auto_apply import (
+    AutoApplyEngine,
+    get_supported_sites,
+    is_auto_apply_supported,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,9 +56,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Global agent instance ───────────────────────────────────────────
+# ── Global instances ─────────────────────────────────────────────────
 
 agent = JobHunterAgent()
+apply_engine = AutoApplyEngine()
 
 
 @asynccontextmanager
@@ -60,21 +68,22 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
-    # Try to start Claude session (non-blocking — if it fails, we use fallback)
+    # Try to start LLM provider (non-blocking — if it fails, we use fallback)
     try:
         await agent.init_claude()
     except Exception as e:
-        logger.warning(f"Claude session not available: {e}")
+        logger.warning(f"LLM provider not available: {e}")
 
     yield
 
     await agent.close()
+    await apply_engine.close()
 
 
 app = FastAPI(
     title="Job Hunter Agent",
-    description="AI-powered job hunting agent — Phase 2: Smart Filtering + Alerting",
-    version="0.2.0",
+    description="AI-powered job hunting agent — Phase 3: Auto-Apply + Multi-LLM",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -316,7 +325,7 @@ async def update_job_status(
     if not job:
         raise HTTPException(404, "Job not found")
 
-    if status not in ("new", "saved", "dismissed", "viewed"):
+    if status not in ("new", "saved", "dismissed", "viewed", "applied"):
         raise HTTPException(400, "Invalid status")
 
     now = datetime.now(timezone.utc)
@@ -670,11 +679,82 @@ async def export_jobs_csv(
     )
 
 
+# ── Phase 3: Applications / Auto-Apply ────────────────────────────
+
+@app.post("/api/apply")
+async def apply_to_job(data: ApplyRequest):
+    """Auto-apply to a job. Requires user confirmation on the frontend."""
+    result = await apply_engine.apply(data.job_id, data.resume_id)
+    return {
+        "success": result.success,
+        "method": result.method,
+        "screenshot": result.screenshot_path,
+        "notes": result.notes,
+    }
+
+
+@app.get("/api/applications")
+async def list_applications(
+    job_id: int | None = Query(None),
+    status: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """List application records."""
+    from backend.database import Application
+
+    query = db.query(Application).order_by(Application.id.desc())
+    if job_id:
+        query = query.filter(Application.job_id == job_id)
+    if status:
+        query = query.filter(Application.status == status)
+
+    apps = query.limit(200).all()
+    return [
+        {
+            "id": a.id,
+            "job_id": a.job_id,
+            "applied_at": a.applied_at.isoformat() if a.applied_at else None,
+            "method": a.method,
+            "status": a.status,
+            "notes": a.notes,
+        }
+        for a in apps
+    ]
+
+
+@app.get("/api/apply/supported-sites")
+async def supported_sites():
+    """Return the list of sites that support auto-apply."""
+    return {"sites": get_supported_sites()}
+
+
+# ── LLM Provider Endpoints ────────────────────────────────────────
+
+@app.get("/api/llm/status")
+async def llm_status():
+    """Return current LLM provider status."""
+    return agent.get_llm_status()
+
+
+@app.post("/api/llm/switch")
+async def switch_llm(data: LLMProviderSwitch):
+    """Switch the active LLM provider at runtime."""
+    success = await agent.init_llm(data.provider)
+    return {
+        "message": f"Switched to {data.provider}" if success else f"Failed to switch to {data.provider}",
+        "success": success,
+        **agent.get_llm_status(),
+    }
+
+
 # ── Health Check ────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
+    llm = agent.get_llm_status()
     return {
         "status": "ok",
         "claude_available": agent._claude_available,
+        "llm_provider": llm["provider"],
+        "llm_available": llm["available"],
     }

@@ -9,9 +9,10 @@ from typing import Any, AsyncIterator
 
 from datetime import datetime, timezone
 
-from backend.claude_session import ClaudeSession, fallback_parse_resume
+from backend.claude_session import fallback_parse_resume
 from backend.config import settings
 from backend.database import (
+    Application,
     JobAlert,
     JobListing,
     ResumeProfile,
@@ -19,6 +20,7 @@ from backend.database import (
     SearchPreference,
     SessionLocal,
 )
+from backend.llm_provider import BaseLLMProvider, create_provider
 from backend.models import ParsedResume, SearchQueries
 from backend.tools.job_scorer import score_job
 from backend.tools.job_scraper import scrape_all
@@ -71,32 +73,63 @@ class JobHunterAgent:
     """Main agent that orchestrates the entire job hunting workflow."""
 
     def __init__(self) -> None:
-        self.claude: ClaudeSession | None = None
-        self._claude_available = False
+        self.llm: BaseLLMProvider | None = None
+        self._llm_available = False
+        self._llm_provider_name: str = settings.llm_provider
+
+    # ── backward compat property ─────────────────────────────────────
+    @property
+    def _claude_available(self) -> bool:
+        return self._llm_available
+
+    @_claude_available.setter
+    def _claude_available(self, value: bool) -> None:
+        self._llm_available = value
+
+    # Keep a .claude alias so existing tools that pass `agent.claude`
+    # continue to work — they only check `.is_ready` and call
+    # `.ask()` / `.ask_for_json()`, which BaseLLMProvider implements.
+    @property
+    def claude(self) -> BaseLLMProvider | None:
+        return self.llm
+
+    # ── LLM lifecycle ────────────────────────────────────────────────
 
     async def init_claude(self) -> bool:
-        """Initialize the Claude browser session."""
+        """Initialize the configured LLM provider (name kept for backward compat)."""
+        return await self.init_llm()
+
+    async def init_llm(self, provider_name: str | None = None) -> bool:
+        """Initialize (or switch) the LLM provider."""
+        name = provider_name or self._llm_provider_name
         try:
-            self.claude = ClaudeSession()
-            await self.claude.start()
+            # Close previous provider if switching
+            if self.llm is not None:
+                await self.llm.close()
 
-            if not self.claude.is_ready:
-                success = await self.claude.login()
-                if not success:
-                    logger.warning("Claude login failed; will use fallback scoring")
-                    self._claude_available = False
-                    return False
-
-            self._claude_available = True
-            return True
-        except Exception as e:
-            logger.warning(f"Could not initialize Claude session: {e}")
-            self._claude_available = False
+            provider = await create_provider(name)
+            self.llm = provider
+            self._llm_available = provider.is_ready
+            self._llm_provider_name = name
+            logger.info(
+                f"LLM provider '{name}' initialised (ready={provider.is_ready})"
+            )
+            return provider.is_ready
+        except Exception as exc:
+            logger.warning(f"Could not initialise LLM provider '{name}': {exc}")
+            self._llm_available = False
             return False
 
     async def close(self) -> None:
-        if self.claude:
-            await self.claude.close()
+        if self.llm:
+            await self.llm.close()
+
+    def get_llm_status(self) -> dict:
+        """Return current LLM status for the health endpoint."""
+        return {
+            "provider": self._llm_provider_name,
+            "available": self._llm_available,
+        }
 
     # ── Resume Analysis ─────────────────────────────────────────────
 
@@ -109,7 +142,7 @@ class JobHunterAgent:
         raw_text = parse_resume(file_path)
         filename = file_path.rsplit("/", 1)[-1] if "/" in file_path else file_path
 
-        # Analyze with Claude or fallback
+        # Analyze with LLM or fallback
         profile_data = await self._analyze_resume_text(raw_text)
 
         # Save to database
@@ -146,17 +179,17 @@ class JobHunterAgent:
             db.close()
 
     async def _analyze_resume_text(self, raw_text: str) -> dict:
-        """Analyze resume text using Claude or fallback."""
-        if self.claude and self.claude.is_ready:
+        """Analyze resume text using the active LLM or fallback."""
+        if self.llm and self.llm.is_ready:
             try:
                 prompt = RESUME_ANALYSIS_PROMPT.format(
                     resume_text=raw_text[:8000]
                 )
-                result = await self.claude.ask_for_json(prompt)
+                result = await self.llm.ask_for_json(prompt)
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"Claude resume analysis failed: {e}")
+                logger.warning(f"LLM resume analysis failed: {e}")
 
         return fallback_parse_resume(raw_text)
 
@@ -202,15 +235,15 @@ class JobHunterAgent:
             db.close()
 
     async def _parse_preferences_text(self, message: str) -> dict:
-        """Parse preferences using Claude or fallback."""
-        if self.claude and self.claude.is_ready:
+        """Parse preferences using the active LLM or fallback."""
+        if self.llm and self.llm.is_ready:
             try:
                 prompt = PREFERENCES_PROMPT.format(message=message)
-                result = await self.claude.ask_for_json(prompt)
+                result = await self.llm.ask_for_json(prompt)
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"Claude preferences parsing failed: {e}")
+                logger.warning(f"LLM preferences parsing failed: {e}")
 
         # Fallback: extract basic info from text
         return self._fallback_parse_preferences(message)
@@ -343,7 +376,7 @@ class JobHunterAgent:
 
             if not pref_keywords:
                 queries = await build_search_queries(
-                    self.claude, profile, preferences_text
+                    self.llm, profile, preferences_text
                 )
                 pref_keywords = queries.keywords
                 pref_persian = queries.persian_keywords
@@ -402,7 +435,7 @@ class JobHunterAgent:
             for i, job_result in enumerate(raw_jobs):
                 job_dict = job_result.to_dict()
 
-                score_result = await score_job(self.claude, profile, job_dict)
+                score_result = await score_job(self.llm, profile, job_dict)
 
                 job_dict["match_score"] = score_result.score
                 job_dict["match_reason"] = score_result.reason
@@ -449,7 +482,7 @@ class JobHunterAgent:
             scored_jobs.sort(key=lambda j: j["match_score"], reverse=True)
 
             # Generate report
-            report = await generate_report(self.claude, profile, scored_jobs)
+            report = await generate_report(self.llm, profile, scored_jobs)
 
             yield {
                 "type": "done",
@@ -541,7 +574,7 @@ class JobHunterAgent:
             for i, job_result in enumerate(raw_jobs):
                 job_dict = job_result.to_dict()
 
-                score_result = await score_job(self.claude, profile, job_dict)
+                score_result = await score_job(self.llm, profile, job_dict)
                 job_dict["match_score"] = score_result.score
                 job_dict["match_reason"] = score_result.reason
 
@@ -591,7 +624,7 @@ class JobHunterAgent:
             db.commit()
 
             new_jobs.sort(key=lambda j: j["match_score"], reverse=True)
-            report = await generate_report(self.claude, profile, new_jobs)
+            report = await generate_report(self.llm, profile, new_jobs)
 
             yield {
                 "type": "done",
