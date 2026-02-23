@@ -134,9 +134,12 @@ class OpenAIProvider(BaseLLMProvider):
             return
 
         try:
-            from openai import AsyncOpenAI
+            from openai import OpenAI
 
-            self._client = AsyncOpenAI(api_key=api_key)
+            self._client = OpenAI(
+                                base_url="https://openrouter.ai/api/v1",
+                                api_key=api_key,
+                            )
             self._ready = True
             logger.info(f"OpenAI provider ready (model={self._model})")
         except ImportError:
