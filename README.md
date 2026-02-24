@@ -57,9 +57,12 @@ cp .env.example .env
 
 ## Running
 
+All commands below should be run from the **project root** directory (not from inside `backend/` or `frontend/`).
+
 ### Start Backend
 
 ```bash
+# From project root:
 uvicorn backend.main:app --reload --port 8000
 ```
 
