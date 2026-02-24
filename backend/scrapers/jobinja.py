@@ -37,7 +37,17 @@ class JobinjaScraper(BaseScraper):
                     continue
 
                 soup = BeautifulSoup(html, "html.parser")
-                job_cards = soup.select(".o-listView__itemInfo, .c-jobListView__item")
+                # Try multiple selector strategies (site redesigns often)
+                job_cards = soup.select(
+                    ".o-listView__itemInfo, .c-jobListView__item, "
+                    ".c-jobListView__row, li[class*='job'], "
+                    "div[class*='jobItem'], article"
+                )
+
+                # Fallback: find all links to job pages
+                if not job_cards:
+                    job_cards = soup.select("a[href*='/jobs/']")
+                    job_cards = [a.parent for a in job_cards if a.parent]
 
                 for card in job_cards:
                     if len(results) >= self.max_jobs:
@@ -45,23 +55,33 @@ class JobinjaScraper(BaseScraper):
 
                     try:
                         title_el = card.select_one(
-                            "h3 a, .c-jobListView__titleLink, a[href*='/jobs/']"
+                            "h3 a, h2 a, .c-jobListView__titleLink, "
+                            "a[href*='/jobs/']"
                         )
                         if not title_el:
                             continue
 
                         title = title_el.get_text(strip=True)
+                        if not title or len(title) < 3:
+                            continue
+
                         link = title_el.get("href", "")
                         if link and not link.startswith("http"):
                             link = self.base_url + link
 
+                        # Skip non-job links
+                        if "/jobs/" not in link:
+                            continue
+
                         company_el = card.select_one(
-                            ".c-jobListView__company, .c-companyHeader__name"
+                            ".c-jobListView__company, .c-companyHeader__name, "
+                            "[class*='company'], span.c-jobListView__desc"
                         )
                         company = company_el.get_text(strip=True) if company_el else ""
 
                         location_el = card.select_one(
-                            ".c-jobListView__location, .c-jobListView__meta"
+                            ".c-jobListView__location, .c-jobListView__meta, "
+                            "[class*='location'], [class*='city']"
                         )
                         loc = location_el.get_text(strip=True) if location_el else ""
 
@@ -69,6 +89,10 @@ class JobinjaScraper(BaseScraper):
                             w in (title + loc).lower()
                             for w in ["remote", "ریموت", "دورکاری"]
                         )
+
+                        # Deduplicate by URL within this scraper
+                        if any(r.url == link for r in results):
+                            continue
 
                         results.append(
                             JobResult(

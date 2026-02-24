@@ -17,6 +17,11 @@ class WeWorkRemotelyScraper(BaseScraper):
     site_name = "weworkremotely"
     base_url = "https://weworkremotely.com"
 
+    def _get_headers(self) -> dict:
+        headers = super()._get_headers()
+        headers["Referer"] = "https://weworkremotely.com/"
+        return headers
+
     async def search(self, keywords: list[str], location: str = "") -> list[JobResult]:
         results: list[JobResult] = []
 

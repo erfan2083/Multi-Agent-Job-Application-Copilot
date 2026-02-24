@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     max_jobs_per_site: int = 20
     request_delay_seconds: float = 2.0
 
+    # LLM rate limiting (requests per minute; OpenRouter free tier = 8)
+    llm_rate_limit_rpm: int = 8
+    llm_score_batch_size: int = 5
+
     # Paths
     upload_dir: str = "uploads"
     session_dir: str = "playwright-session"

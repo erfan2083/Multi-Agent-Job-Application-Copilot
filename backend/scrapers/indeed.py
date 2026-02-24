@@ -17,6 +17,11 @@ class IndeedScraper(BaseScraper):
     site_name = "indeed"
     base_url = "https://www.indeed.com"
 
+    def _get_headers(self) -> dict:
+        headers = super()._get_headers()
+        headers["Referer"] = "https://www.google.com/"
+        return headers
+
     async def search(self, keywords: list[str], location: str = "") -> list[JobResult]:
         results: list[JobResult] = []
 
