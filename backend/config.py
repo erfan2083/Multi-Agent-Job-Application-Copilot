@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # LLM provider: "claude" (browser session) or "openai" / "chatgpt" (API)
+    # LLM provider: "claude" | "openai" / "chatgpt" | "gemini"
     llm_provider: str = "claude"
 
     # Claude session
@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # OpenAI / ChatGPT
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
+
+    # Google Gemini
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
 
     # Database
     database_url: str = "sqlite:///./job_hunter.db"

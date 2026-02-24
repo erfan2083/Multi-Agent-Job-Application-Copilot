@@ -1,4 +1,4 @@
-"""LLM provider abstraction — supports Claude (browser session) and OpenAI (API).
+"""LLM provider abstraction — supports Claude, OpenAI, and Gemini.
 
 Users can choose which LLM backend to use via the LLM_PROVIDER environment
 variable or at runtime through the API.  Every place that previously called
@@ -270,12 +270,106 @@ class OpenAIProvider(BaseLLMProvider):
         raise last_exc  # type: ignore[misc]
 
 
+# ── Google Gemini provider ────────────────────────────────────────────
+
+class GeminiProvider(BaseLLMProvider):
+    """Uses the Google Generative AI SDK (``google-generativeai`` package).
+
+    Supports the same rate-limiting and retry logic as the OpenAI provider.
+    """
+
+    MAX_RETRIES = 5
+    BASE_RETRY_DELAY = 2.0  # seconds
+
+    def __init__(self) -> None:
+        self._model = None  # GenerativeModel instance
+        self._ready = False
+        self._model_name = settings.gemini_model
+        rpm = max(1, settings.llm_rate_limit_rpm - 1)
+        self._rate_limiter = AsyncRateLimiter(
+            max_requests=rpm, window_seconds=60.0
+        )
+
+    @property
+    def is_ready(self) -> bool:
+        return self._ready
+
+    async def start(self) -> None:
+        api_key = settings.gemini_api_key
+        if not api_key:
+            logger.warning("No GEMINI_API_KEY set — Gemini provider disabled")
+            self._ready = False
+            return
+
+        try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=api_key)
+            self._model = genai.GenerativeModel(
+                model_name=self._model_name,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,
+                    max_output_tokens=4096,
+                ),
+            )
+            self._ready = True
+            logger.info(f"Gemini provider ready (model={self._model_name})")
+        except ImportError:
+            logger.error(
+                "google-generativeai package not installed. "
+                "Run: pip install google-generativeai"
+            )
+            self._ready = False
+        except Exception as exc:
+            logger.error(f"Gemini init failed: {exc}")
+            self._ready = False
+
+    async def close(self) -> None:
+        self._model = None
+        self._ready = False
+
+    async def ask(self, prompt: str, timeout: int = 120) -> str:
+        if not self._model or not self._ready:
+            raise RuntimeError("Gemini provider is not ready")
+
+        last_exc: Exception | None = None
+
+        for attempt in range(self.MAX_RETRIES):
+            await self._rate_limiter.acquire()
+
+            try:
+                response = await self._model.generate_content_async(prompt)
+                return response.text or ""
+
+            except Exception as exc:
+                last_exc = exc
+                exc_str = str(exc)
+
+                if "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"Gemini rate limited, retry {attempt + 1}/"
+                        f"{self.MAX_RETRIES} in {delay:.0f}s"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Gemini request failed: {exc}")
+                    raise
+
+        logger.error(
+            f"Gemini request failed after {self.MAX_RETRIES} retries: "
+            f"{last_exc}"
+        )
+        raise last_exc  # type: ignore[misc]
+
+
 # ── Factory ──────────────────────────────────────────────────────────
 
 _PROVIDERS: dict[str, type[BaseLLMProvider]] = {
     "claude": ClaudeBrowserProvider,
     "openai": OpenAIProvider,
     "chatgpt": OpenAIProvider,  # alias
+    "gemini": GeminiProvider,
 }
 
 
