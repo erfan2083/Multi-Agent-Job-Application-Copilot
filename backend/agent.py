@@ -22,7 +22,7 @@ from backend.database import (
 )
 from backend.llm_provider import BaseLLMProvider, create_provider
 from backend.models import ParsedResume, SearchQueries
-from backend.tools.job_scorer import score_job
+from backend.tools.job_scorer import score_jobs_batch
 from backend.tools.job_scraper import scrape_all
 from backend.tools.query_builder import build_search_queries
 from backend.tools.report_generator import generate_report
@@ -429,14 +429,17 @@ class JobHunterAgent:
                 "message": f"{total_found} موقعیت شغلی پیدا شد. در حال بررسی تطابق...",
             }
 
-            # Score each job
+            # Score jobs in batches to respect rate limits
+            all_job_dicts = [jr.to_dict() for jr in raw_jobs]
+            all_scores = await score_jobs_batch(
+                self.llm, profile, all_job_dicts
+            )
+
             scored_jobs: list[dict] = []
 
-            for i, job_result in enumerate(raw_jobs):
-                job_dict = job_result.to_dict()
-
-                score_result = await score_job(self.llm, profile, job_dict)
-
+            for i, (job_dict, score_result) in enumerate(
+                zip(all_job_dicts, all_scores)
+            ):
                 job_dict["match_score"] = score_result.score
                 job_dict["match_reason"] = score_result.reason
 
@@ -568,13 +571,18 @@ class JobHunterAgent:
                 "message": f"{total_found} موقعیت شغلی پیدا شد. در حال بررسی تطابق...",
             }
 
+            # Score jobs in batches to respect rate limits
+            all_job_dicts = [jr.to_dict() for jr in raw_jobs]
+            all_scores = await score_jobs_batch(
+                self.llm, profile, all_job_dicts
+            )
+
             new_jobs: list[dict] = []
             new_alert_count = 0
 
-            for i, job_result in enumerate(raw_jobs):
-                job_dict = job_result.to_dict()
-
-                score_result = await score_job(self.llm, profile, job_dict)
+            for i, (job_dict, score_result) in enumerate(
+                zip(all_job_dicts, all_scores)
+            ):
                 job_dict["match_score"] = score_result.score
                 job_dict["match_reason"] = score_result.reason
 

@@ -17,6 +17,11 @@ class WellfoundScraper(BaseScraper):
     site_name = "wellfound"
     base_url = "https://wellfound.com"
 
+    def _get_headers(self) -> dict:
+        headers = super()._get_headers()
+        headers["Referer"] = "https://wellfound.com/"
+        return headers
+
     async def search(self, keywords: list[str], location: str = "") -> list[JobResult]:
         results: list[JobResult] = []
 

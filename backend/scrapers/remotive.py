@@ -16,6 +16,18 @@ class RemotiveScraper(BaseScraper):
     base_url = "https://remotive.com"
     api_url = "https://remotive.com/api/remote-jobs"
 
+    def _get_api_headers(self) -> dict:
+        """Lightweight headers for the JSON API (no browser Sec-Fetch headers)."""
+        import random as _rand
+        from backend.scrapers.base import USER_AGENTS
+
+        return {
+            "User-Agent": _rand.choice(USER_AGENTS),
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Connection": "keep-alive",
+        }
+
     async def search(self, keywords: list[str], location: str = "") -> list[JobResult]:
         """Search Remotive using their public JSON API."""
         results: list[JobResult] = []
@@ -31,7 +43,7 @@ class RemotiveScraper(BaseScraper):
                     resp = await client.get(
                         self.api_url,
                         params=params,
-                        headers=self._get_headers(),
+                        headers=self._get_api_headers(),
                         timeout=20.0,
                     )
                     resp.raise_for_status()

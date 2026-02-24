@@ -38,6 +38,20 @@ class JobVisionScraper(BaseScraper):
 
         return results[: self.max_jobs]
 
+    def _get_api_headers(self) -> dict:
+        """Lightweight headers for the JSON API."""
+        import random
+        from backend.scrapers.base import USER_AGENTS
+
+        return {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
+            "Connection": "keep-alive",
+            "Referer": self.base_url,
+            "Origin": self.base_url,
+        }
+
     async def _search_api(
         self, client: httpx.AsyncClient, keyword: str, location: str
     ) -> list[JobResult]:
@@ -49,16 +63,16 @@ class JobVisionScraper(BaseScraper):
         if location:
             params["location"] = location
 
-        headers = self._get_headers()
-        headers["Accept"] = "application/json"
-
-        resp = await client.get(url, params=params, headers=headers, timeout=20.0)
+        resp = await client.get(
+            url, params=params, headers=self._get_api_headers(), timeout=20.0
+        )
         resp.raise_for_status()
         data = resp.json()
 
+        # Navigate various response shapes the API might return
         jobs = data.get("data", data.get("items", data.get("results", [])))
         if isinstance(jobs, dict):
-            jobs = jobs.get("items", [])
+            jobs = jobs.get("items", jobs.get("jobs", []))
 
         for job in jobs:
             if len(results) >= self.max_jobs:
@@ -106,7 +120,15 @@ class JobVisionScraper(BaseScraper):
             return results
 
         soup = BeautifulSoup(html, "html.parser")
-        cards = soup.select(".job-card, .job-item, [class*='JobCard']")
+        cards = soup.select(
+            ".job-card, .job-item, [class*='JobCard'], "
+            "[class*='jobCard'], article, div[data-id]"
+        )
+
+        # Fallback: find links to job pages
+        if not cards:
+            job_links = soup.select("a[href*='/jobs/']")
+            cards = [a.parent for a in job_links if a.parent]
 
         for card in cards:
             if len(results) >= self.max_jobs:

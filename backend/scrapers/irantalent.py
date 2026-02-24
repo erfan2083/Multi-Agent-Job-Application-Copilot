@@ -43,8 +43,15 @@ class IranTalentScraper(BaseScraper):
 
                 soup = BeautifulSoup(html, "html.parser")
                 job_cards = soup.select(
-                    ".job-list-item, .job-card, [class*='JobCard'], article"
+                    ".job-list-item, .job-card, [class*='JobCard'], "
+                    "[class*='jobCard'], [class*='job-item'], "
+                    "article, div[data-job-id]"
                 )
+
+                # Fallback: find links to job detail pages
+                if not job_cards:
+                    job_links = soup.select("a[href*='/job/'], a[href*='/jobs/']")
+                    job_cards = [a.parent for a in job_links if a.parent]
 
                 for card in job_cards:
                     if len(results) >= self.max_jobs:
@@ -52,23 +59,29 @@ class IranTalentScraper(BaseScraper):
 
                     try:
                         title_el = card.select_one(
-                            "h2 a, h3 a, a[href*='/job/'], .job-title"
+                            "h2 a, h3 a, a[href*='/job/'], a[href*='/jobs/'], "
+                            ".job-title, [class*='title'] a"
                         )
                         if not title_el:
                             continue
 
                         title = title_el.get_text(strip=True)
+                        if not title or len(title) < 3:
+                            continue
+
                         link = title_el.get("href", "")
                         if link and not link.startswith("http"):
                             link = self.base_url + link
 
                         company_el = card.select_one(
-                            ".company-name, .employer-name, [class*='company']"
+                            ".company-name, .employer-name, "
+                            "[class*='company'], [class*='employer']"
                         )
                         company = company_el.get_text(strip=True) if company_el else ""
 
                         location_el = card.select_one(
-                            ".job-location, [class*='location']"
+                            ".job-location, [class*='location'], "
+                            "[class*='city']"
                         )
                         loc = location_el.get_text(strip=True) if location_el else ""
 
@@ -81,6 +94,10 @@ class IranTalentScraper(BaseScraper):
                             w in (title + loc + description).lower()
                             for w in ["remote", "ریموت", "دورکاری"]
                         )
+
+                        # Deduplicate
+                        if any(r.url == link for r in results):
+                            continue
 
                         results.append(
                             JobResult(
