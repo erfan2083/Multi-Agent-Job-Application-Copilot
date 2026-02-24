@@ -279,7 +279,7 @@ class GeminiProvider(BaseLLMProvider):
     """
 
     MAX_RETRIES = 5
-    BASE_RETRY_DELAY = 2.0  # seconds
+    BASE_RETRY_DELAY = 4.0  # seconds
 
     def __init__(self) -> None:
         self._model = None  # GenerativeModel instance

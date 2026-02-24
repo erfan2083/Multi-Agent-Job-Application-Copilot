@@ -4,6 +4,7 @@ import { getLLMStatus, switchLLMProvider } from "../api";
 const PROVIDERS = [
   { value: "claude", label: "Claude (Browser)" },
   { value: "openai", label: "ChatGPT / OpenAI" },
+  { value: "gemini", label: "Gemini" },
 ];
 
 function LLMSelector() {
