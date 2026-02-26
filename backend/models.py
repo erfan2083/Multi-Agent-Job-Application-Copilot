@@ -196,4 +196,32 @@ class ApplicationOut(BaseModel):
 # ── LLM Provider ────────────────────────────────────────────────────
 
 class LLMProviderSwitch(BaseModel):
-    provider: str  # "claude", "openai" / "chatgpt"
+    provider: str  # "claude", "openai" / "chatgpt" / "gemini"
+
+
+# ── Authentication ─────────────────────────────────────────────────
+
+class UserRegister(BaseModel):
+    email: str
+    password: str
+    full_name: str = ""
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    full_name: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut

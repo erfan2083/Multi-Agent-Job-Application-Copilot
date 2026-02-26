@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     llm_rate_limit_rpm: int = 8
     llm_score_batch_size: int = 5
 
+    # Authentication (JWT)
+    jwt_secret_key: str = "change-me-in-production-use-a-real-secret-key"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 10080  # 7 days
+
     # Paths
     upload_dir: str = "uploads"
     session_dir: str = "playwright-session"

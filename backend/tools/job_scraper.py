@@ -1,4 +1,8 @@
-"""Job scraper orchestrator — runs all scrapers in parallel."""
+"""Job scraper orchestrator — runs all scrapers in parallel.
+
+Uses python-jobspy for major international boards (Indeed, LinkedIn,
+Glassdoor, Google) and custom scrapers for Iranian sites + Remotive.
+"""
 
 from __future__ import annotations
 
@@ -7,32 +11,23 @@ import logging
 from typing import Callable
 
 from backend.scrapers.base import BaseScraper, JobResult
-from backend.scrapers.indeed import IndeedScraper
 from backend.scrapers.irantalent import IranTalentScraper
 from backend.scrapers.jobinja import JobinjaScraper
 from backend.scrapers.jobvision import JobVisionScraper
-from backend.scrapers.linkedin import LinkedInScraper
 from backend.scrapers.remotive import RemotiveScraper
-from backend.scrapers.wellfound import WellfoundScraper
-from backend.scrapers.weworkremotely import WeWorkRemotelyScraper
 
 logger = logging.getLogger(__name__)
 
-# Registry of all available scrapers
+# Registry of custom HTML scrapers
 ALL_SCRAPERS: dict[str, type[BaseScraper]] = {
     "jobinja": JobinjaScraper,
     "irantalent": IranTalentScraper,
     "jobvision": JobVisionScraper,
-    "linkedin": LinkedInScraper,
-    "indeed": IndeedScraper,
     "remotive": RemotiveScraper,
-    "weworkremotely": WeWorkRemotelyScraper,
-    "wellfound": WellfoundScraper,
 }
 
-# Iranian sites use Persian keywords, international sites use English
+# Iranian sites use Persian keywords
 IRANIAN_SITES = {"jobinja", "irantalent", "jobvision"}
-INTERNATIONAL_SITES = {"linkedin", "indeed", "remotive", "weworkremotely", "wellfound"}
 
 
 async def scrape_all(
@@ -46,27 +41,18 @@ async def scrape_all(
 ) -> list[JobResult]:
     """Run all scrapers in parallel and collect results.
 
-    Args:
-        keywords: English keywords for international sites.
-        persian_keywords: Persian keywords for Iranian sites.
-        locations: Location filters.
-        preferred_sites: Limit to these sites only (empty = all).
-        on_site_start: Callback when a site starts scraping.
-        on_site_done: Callback when a site finishes (site_name, job_count).
-        on_site_error: Callback when a site fails (site_name, error_msg).
-
-    Returns:
-        Combined list of job results from all sites.
+    International boards (Indeed, LinkedIn, Glassdoor, Google) are handled
+    by python-jobspy in a single call.  Custom scrapers handle Remotive and
+    Iranian job boards.
     """
     persian_keywords = persian_keywords or []
     locations = locations or []
     location_str = ", ".join(locations) if locations else ""
 
-    # Determine which sites to scrape
+    # ── Custom HTML scrapers ──────────────────────────────────────────
     sites_to_scrape = set(ALL_SCRAPERS.keys())
     if preferred_sites:
         sites_to_scrape = sites_to_scrape & set(preferred_sites)
-
     if not sites_to_scrape:
         sites_to_scrape = set(ALL_SCRAPERS.keys())
 
@@ -93,8 +79,31 @@ async def scrape_all(
                 on_site_error(site_name, str(e))
             return []
 
-    # Run all scrapers concurrently
+    # ── python-jobspy (Indeed, LinkedIn, Glassdoor, Google) ───────────
+    async def _run_jobspy() -> list[JobResult]:
+        try:
+            from backend.scrapers.jobspy_scraper import JobSpyScraper
+        except ImportError:
+            logger.warning("python-jobspy not installed — skipping jobspy")
+            return []
+
+        if on_site_start:
+            on_site_start("jobspy")
+
+        scraper = JobSpyScraper()
+        try:
+            results = await scraper.search_safe(keywords, location_str)
+            if on_site_done:
+                on_site_done("jobspy", len(results))
+            return results
+        except Exception as e:
+            if on_site_error:
+                on_site_error("jobspy", str(e))
+            return []
+
+    # Run everything concurrently
     tasks = [_run_scraper(site) for site in sites_to_scrape]
+    tasks.append(_run_jobspy())
     all_results = await asyncio.gather(*tasks)
 
     # Flatten and deduplicate by URL
