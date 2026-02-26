@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
-import { uploadResume } from "../api";
+import { uploadResume, deleteResume } from "../api";
 
-function ResumeUpload({ onUploaded, resume, profile }) {
+function ResumeUpload({ onUploaded, onDeleted, resume, profile }) {
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleFile = async (file) => {
@@ -26,6 +28,23 @@ function ResumeUpload({ onUploaded, resume, profile }) {
       setError(err.message || "خطا در آپلود رزومه");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!resume?.id) return;
+
+    setDeleting(true);
+    setError("");
+
+    try {
+      await deleteResume(resume.id);
+      setShowDeleteConfirm(false);
+      if (onDeleted) onDeleted();
+    } catch (err) {
+      setError(err.message || "خطا در حذف رزومه");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -105,24 +124,70 @@ function ResumeUpload({ onUploaded, resume, profile }) {
         ) : (
           <div className="space-y-3">
             {/* Uploaded file info */}
-            <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
-              <svg
-                className="w-5 h-5 text-green-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <div className="flex items-center justify-between p-2 bg-green-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-5 h-5 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-sm text-green-800 font-medium">
+                  {resume.filename}
+                </span>
+              </div>
+
+              {/* Delete button */}
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                title="حذف رزومه"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="text-sm text-green-800 font-medium">
-                {resume.filename}
-              </span>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
             </div>
+
+            {/* Delete confirmation */}
+            {showDeleteConfirm && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-700 mb-2">
+                  آیا از حذف این رزومه مطمئن هستید؟ تمام اطلاعات مرتبط نیز حذف خواهد شد.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-xs font-medium px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
+                  >
+                    {deleting ? (
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      "بله، حذف شود"
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
+                  >
+                    انصراف
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Profile summary */}
             {profile && (
@@ -167,14 +232,18 @@ function ResumeUpload({ onUploaded, resume, profile }) {
 
             {/* Re-upload button */}
             <button
-              onClick={() => {
-                onUploaded({ resume: null, profile: null });
-                fileInputRef.current?.value && (fileInputRef.current.value = "");
-              }}
+              onClick={() => fileInputRef.current?.click()}
               className="text-xs text-brand-600 hover:text-brand-800 underline"
             >
               آپلود رزومه جدید
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.doc"
+              onChange={(e) => handleFile(e.target.files[0])}
+              className="hidden"
+            />
           </div>
         )}
 
