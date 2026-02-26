@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "./AuthContext";
+import AuthPage from "./components/AuthPage";
 import ChatInterface from "./components/ChatInterface";
 import ResumeUpload from "./components/ResumeUpload";
 import JobDashboard from "./components/JobDashboard";
@@ -7,9 +9,10 @@ import SavedSearches from "./components/SavedSearches";
 import AlertsPanel from "./components/AlertsPanel";
 import ApplicationsPanel from "./components/ApplicationsPanel";
 import LLMSelector from "./components/LLMSelector";
-import { searchJobs, checkHealth, getAlertCount } from "./api";
+import { searchJobs, checkHealth, getAlertCount, getResumes } from "./api";
 
 function App() {
+  const { user, loading: authLoading, logout } = useAuth();
   const [resume, setResume] = useState(null);
   const [profile, setProfile] = useState(null);
   const [preferencesId, setPreferencesId] = useState(null);
@@ -21,12 +24,35 @@ function App() {
   const [backendOk, setBackendOk] = useState(null);
   const [activeTab, setActiveTab] = useState("chat");
   const [alertCount, setAlertCount] = useState(0);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     checkHealth()
       .then(() => setBackendOk(true))
       .catch(() => setBackendOk(false));
   }, []);
+
+  // Load user's resumes on login
+  useEffect(() => {
+    if (!user) return;
+
+    getResumes()
+      .then((resumes) => {
+        if (resumes.length > 0) {
+          const latest = resumes[0];
+          setResume({ id: latest.id, filename: latest.filename });
+          setProfile({
+            full_name: user.full_name || "",
+            skills: latest.skills || [],
+            job_titles: latest.titles || [],
+            total_experience_years: latest.experience_years || 0,
+            education: latest.education || {},
+            languages: latest.languages || [],
+          });
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   // Periodically check alert count
   useEffect(() => {
@@ -40,12 +66,36 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Show loading spinner while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Show auth page if not logged in
+  if (!user) {
+    return <AuthPage />;
+  }
+
   const handleResumeUploaded = (data) => {
     setResume(data.resume);
     setProfile(data.profile);
     setStatusMessages((prev) => [
       ...prev,
       { type: "status", message: "رزومه با موفقیت آنالیز شد" },
+    ]);
+  };
+
+  const handleResumeDeleted = () => {
+    setResume(null);
+    setProfile(null);
+    setPreferencesId(null);
+    setStatusMessages((prev) => [
+      ...prev,
+      { type: "status", message: "رزومه با موفقیت حذف شد" },
     ]);
   };
 
@@ -122,6 +172,17 @@ function App() {
     setJobs((prev) => [...prev, jobData]);
   };
 
+  const handleLogout = () => {
+    logout();
+    setResume(null);
+    setProfile(null);
+    setPreferencesId(null);
+    setJobs([]);
+    setStatusMessages([]);
+    setReport("");
+    setShowUserMenu(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
       {/* Header */}
@@ -155,6 +216,59 @@ function App() {
                 قطع
               </span>
             )}
+
+            {/* User Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 rounded-full px-3 py-1.5 transition-colors"
+              >
+                <div className="w-7 h-7 bg-brand-600 rounded-full flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">
+                    {(user.full_name || user.email)[0].toUpperCase()}
+                  </span>
+                </div>
+                <span className="text-sm text-gray-700 max-w-[120px] truncate">
+                  {user.full_name || user.email}
+                </span>
+                <svg
+                  className={`w-4 h-4 text-gray-500 transition-transform ${showUserMenu ? "rotate-180" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showUserMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowUserMenu(false)}
+                  />
+                  <div className="absolute left-0 mt-2 w-56 bg-white rounded-xl border border-gray-200 shadow-lg z-20 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {user.full_name || "کاربر"}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate ltr" dir="ltr">
+                        {user.email}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      خروج از حساب
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -233,6 +347,7 @@ function App() {
             <div className="lg:col-span-1 space-y-6">
               <ResumeUpload
                 onUploaded={handleResumeUploaded}
+                onDeleted={handleResumeDeleted}
                 resume={resume}
                 profile={profile}
               />

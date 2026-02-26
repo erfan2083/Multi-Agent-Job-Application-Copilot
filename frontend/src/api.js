@@ -5,6 +5,77 @@
 const BASE_URL = "/api";
 
 /**
+ * Get the stored auth token.
+ */
+function getToken() {
+  return localStorage.getItem("token");
+}
+
+/**
+ * Build headers with optional auth token.
+ */
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = getToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+// ── Authentication ──────────────────────────────────────────────
+
+/**
+ * Register a new user.
+ */
+export async function registerUser(email, password, fullName = "") {
+  const res = await fetch(`${BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, full_name: fullName }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Registration failed");
+  }
+
+  return res.json();
+}
+
+/**
+ * Login an existing user.
+ */
+export async function loginUser(email, password) {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Login failed");
+  }
+
+  return res.json();
+}
+
+/**
+ * Get current user info (requires token).
+ */
+export async function getMe(token) {
+  const res = await fetch(`${BASE_URL}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) throw new Error("Not authenticated");
+  return res.json();
+}
+
+// ── Resume ──────────────────────────────────────────────────────
+
+/**
  * Upload a resume file (PDF/DOCX) and get the parsed profile.
  */
 export async function uploadResume(file) {
@@ -13,6 +84,7 @@ export async function uploadResume(file) {
 
   const res = await fetch(`${BASE_URL}/upload-resume`, {
     method: "POST",
+    headers: authHeaders(),
     body: formData,
   });
 
@@ -25,12 +97,40 @@ export async function uploadResume(file) {
 }
 
 /**
+ * List all uploaded resumes.
+ */
+export async function getResumes() {
+  const res = await fetch(`${BASE_URL}/resumes`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to fetch resumes");
+  return res.json();
+}
+
+/**
+ * Delete a resume and its associated data.
+ */
+export async function deleteResume(resumeId) {
+  const res = await fetch(`${BASE_URL}/resumes/${resumeId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete resume");
+  }
+  return res.json();
+}
+
+// ── Preferences ─────────────────────────────────────────────────
+
+/**
  * Set user preferences from a natural language message.
  */
 export async function setPreferences(resumeId, message) {
   const res = await fetch(`${BASE_URL}/set-preferences`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ resume_id: resumeId, message }),
   });
 
@@ -42,6 +142,8 @@ export async function setPreferences(resumeId, message) {
   return res.json();
 }
 
+// ── Job Search ──────────────────────────────────────────────────
+
 /**
  * Start a job search and return an SSE event source reader.
  * Calls the callback for each event received.
@@ -49,7 +151,7 @@ export async function setPreferences(resumeId, message) {
 export async function searchJobs(resumeId, preferencesId, onEvent) {
   const res = await fetch(`${BASE_URL}/search-jobs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       resume_id: resumeId,
       preferences_id: preferencesId,
@@ -107,7 +209,9 @@ export async function getJobs({ resumeId, minScore, source, sortBy } = {}) {
   if (source) params.set("source", source);
   if (sortBy) params.set("sort_by", sortBy);
 
-  const res = await fetch(`${BASE_URL}/jobs?${params}`);
+  const res = await fetch(`${BASE_URL}/jobs?${params}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch jobs");
   return res.json();
 }
@@ -118,10 +222,13 @@ export async function getJobs({ resumeId, minScore, source, sortBy } = {}) {
 export async function updateJobStatus(jobId, status) {
   const res = await fetch(`${BASE_URL}/jobs/${jobId}/status?status=${status}`, {
     method: "PATCH",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to update status");
   return res.json();
 }
+
+// ── Chat ────────────────────────────────────────────────────────
 
 /**
  * Send a chat message.
@@ -129,19 +236,10 @@ export async function updateJobStatus(jobId, status) {
 export async function sendChat(content) {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ role: "user", content }),
   });
   if (!res.ok) throw new Error("Chat failed");
-  return res.json();
-}
-
-/**
- * List all uploaded resumes.
- */
-export async function getResumes() {
-  const res = await fetch(`${BASE_URL}/resumes`);
-  if (!res.ok) throw new Error("Failed to fetch resumes");
   return res.json();
 }
 
@@ -154,7 +252,7 @@ export async function checkHealth() {
   return res.json();
 }
 
-// ── Phase 2: Saved Searches ──────────────────────────────────────
+// ── Saved Searches ──────────────────────────────────────────────
 
 /**
  * Create a saved search.
@@ -162,7 +260,7 @@ export async function checkHealth() {
 export async function createSavedSearch(data) {
   const res = await fetch(`${BASE_URL}/saved-searches`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to save search");
@@ -175,7 +273,9 @@ export async function createSavedSearch(data) {
 export async function getSavedSearches(resumeId) {
   const params = new URLSearchParams();
   if (resumeId) params.set("resume_id", resumeId);
-  const res = await fetch(`${BASE_URL}/saved-searches?${params}`);
+  const res = await fetch(`${BASE_URL}/saved-searches?${params}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch saved searches");
   return res.json();
 }
@@ -186,7 +286,7 @@ export async function getSavedSearches(resumeId) {
 export async function updateSavedSearch(searchId, data) {
   const res = await fetch(`${BASE_URL}/saved-searches/${searchId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to update saved search");
@@ -199,6 +299,7 @@ export async function updateSavedSearch(searchId, data) {
 export async function deleteSavedSearch(searchId) {
   const res = await fetch(`${BASE_URL}/saved-searches/${searchId}`, {
     method: "DELETE",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to delete saved search");
   return res.json();
@@ -210,6 +311,7 @@ export async function deleteSavedSearch(searchId) {
 export async function runSavedSearch(searchId, onEvent) {
   const res = await fetch(`${BASE_URL}/saved-searches/${searchId}/run`, {
     method: "POST",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to run saved search");
 
@@ -245,7 +347,7 @@ export async function runSavedSearch(searchId, onEvent) {
   }
 }
 
-// ── Phase 2: Alerts ──────────────────────────────────────────────
+// ── Alerts ──────────────────────────────────────────────────────
 
 /**
  * Get alerts, optionally filtered.
@@ -254,7 +356,9 @@ export async function getAlerts({ savedSearchId, unreadOnly } = {}) {
   const params = new URLSearchParams();
   if (savedSearchId) params.set("saved_search_id", savedSearchId);
   if (unreadOnly) params.set("unread_only", "true");
-  const res = await fetch(`${BASE_URL}/alerts?${params}`);
+  const res = await fetch(`${BASE_URL}/alerts?${params}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch alerts");
   return res.json();
 }
@@ -263,7 +367,9 @@ export async function getAlerts({ savedSearchId, unreadOnly } = {}) {
  * Get unread alert count.
  */
 export async function getAlertCount() {
-  const res = await fetch(`${BASE_URL}/alerts/count`);
+  const res = await fetch(`${BASE_URL}/alerts/count`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch alert count");
   return res.json();
 }
@@ -274,6 +380,7 @@ export async function getAlertCount() {
 export async function markAlertRead(alertId) {
   const res = await fetch(`${BASE_URL}/alerts/${alertId}/read`, {
     method: "PATCH",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to mark alert as read");
   return res.json();
@@ -287,12 +394,13 @@ export async function markAllAlertsRead(savedSearchId) {
   if (savedSearchId) params.set("saved_search_id", savedSearchId);
   const res = await fetch(`${BASE_URL}/alerts/mark-all-read?${params}`, {
     method: "POST",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to mark all alerts as read");
   return res.json();
 }
 
-// ── Phase 2: Job Tracking ────────────────────────────────────────
+// ── Job Tracking ────────────────────────────────────────────────
 
 /**
  * Mark a job as viewed (records timestamp).
@@ -300,12 +408,13 @@ export async function markAllAlertsRead(savedSearchId) {
 export async function markJobViewed(jobId) {
   const res = await fetch(`${BASE_URL}/jobs/${jobId}/view`, {
     method: "POST",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to mark job as viewed");
   return res.json();
 }
 
-// ── Phase 2: CSV Export ──────────────────────────────────────────
+// ── CSV Export ──────────────────────────────────────────────────
 
 /**
  * Get the CSV export URL with filters.
@@ -319,7 +428,7 @@ export function getExportCsvUrl({ resumeId, minScore, source, status } = {}) {
   return `${BASE_URL}/export/csv?${params}`;
 }
 
-// ── Phase 3: Auto-Apply ─────────────────────────────────────────
+// ── Auto-Apply ─────────────────────────────────────────────────
 
 /**
  * Auto-apply to a job (requires user confirmation first).
@@ -327,7 +436,7 @@ export function getExportCsvUrl({ resumeId, minScore, source, status } = {}) {
 export async function applyToJob(jobId, resumeId) {
   const res = await fetch(`${BASE_URL}/apply`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ job_id: jobId, resume_id: resumeId }),
   });
   if (!res.ok) throw new Error("Auto-apply failed");
@@ -341,7 +450,9 @@ export async function getApplications({ jobId, status } = {}) {
   const params = new URLSearchParams();
   if (jobId) params.set("job_id", jobId);
   if (status) params.set("status", status);
-  const res = await fetch(`${BASE_URL}/applications?${params}`);
+  const res = await fetch(`${BASE_URL}/applications?${params}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch applications");
   return res.json();
 }
@@ -350,7 +461,9 @@ export async function getApplications({ jobId, status } = {}) {
  * Get list of sites that support auto-apply.
  */
 export async function getAutoApplySites() {
-  const res = await fetch(`${BASE_URL}/apply/supported-sites`);
+  const res = await fetch(`${BASE_URL}/apply/supported-sites`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch supported sites");
   return res.json();
 }
@@ -361,7 +474,9 @@ export async function getAutoApplySites() {
  * Get current LLM provider status.
  */
 export async function getLLMStatus() {
-  const res = await fetch(`${BASE_URL}/llm/status`);
+  const res = await fetch(`${BASE_URL}/llm/status`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch LLM status");
   return res.json();
 }
@@ -372,7 +487,7 @@ export async function getLLMStatus() {
 export async function switchLLMProvider(provider) {
   const res = await fetch(`${BASE_URL}/llm/switch`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ provider }),
   });
   if (!res.ok) throw new Error("Failed to switch LLM provider");
