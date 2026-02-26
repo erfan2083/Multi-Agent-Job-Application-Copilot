@@ -23,10 +23,27 @@ class Base(DeclarativeBase):
     pass
 
 
+# ── User ──────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(Text, nullable=False)
+    full_name = Column(Text, default="")
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+
+# ── Resume ────────────────────────────────────────────────────────────
+
 class ResumeProfile(Base):
     __tablename__ = "resume_profiles"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=True)  # nullable for backwards compat
     filename = Column(Text, nullable=False)
     raw_text = Column(Text, default="")
     full_name = Column(Text, default="")
@@ -195,7 +212,23 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def init_db() -> None:
+    """Create tables and add any missing columns to existing tables."""
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight migration: add user_id to resume_profiles if missing
+    import sqlalchemy
+
+    insp = sqlalchemy.inspect(engine)
+    if "resume_profiles" in insp.get_table_names():
+        cols = [c["name"] for c in insp.get_columns("resume_profiles")]
+        if "user_id" not in cols:
+            with engine.connect() as conn:
+                conn.execute(
+                    sqlalchemy.text(
+                        "ALTER TABLE resume_profiles ADD COLUMN user_id INTEGER"
+                    )
+                )
+                conn.commit()
 
 
 def get_db() -> Session:

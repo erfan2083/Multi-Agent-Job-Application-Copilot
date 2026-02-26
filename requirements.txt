@@ -12,4 +12,7 @@ python-dotenv==1.0.1
 pydantic==2.10.3
 pydantic-settings==2.7.0
 openai==1.58.1
-google-generativeai>=0.8.0
+google-genai>=1.0.0
+python-jobspy>=1.1.75
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0

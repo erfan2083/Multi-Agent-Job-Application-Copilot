@@ -273,7 +273,7 @@ class OpenAIProvider(BaseLLMProvider):
 # ── Google Gemini provider ────────────────────────────────────────────
 
 class GeminiProvider(BaseLLMProvider):
-    """Uses the Google Generative AI SDK (``google-generativeai`` package).
+    """Uses the new ``google-genai`` SDK (replaces deprecated google-generativeai).
 
     Supports the same rate-limiting and retry logic as the OpenAI provider.
     """
@@ -282,7 +282,7 @@ class GeminiProvider(BaseLLMProvider):
     BASE_RETRY_DELAY = 2.0  # seconds
 
     def __init__(self) -> None:
-        self._model = None  # GenerativeModel instance
+        self._client = None  # genai.Client
         self._ready = False
         self._model_name = settings.gemini_model
         rpm = max(1, settings.llm_rate_limit_rpm - 1)
@@ -302,22 +302,15 @@ class GeminiProvider(BaseLLMProvider):
             return
 
         try:
-            import google.generativeai as genai
+            from google import genai
 
-            genai.configure(api_key=api_key)
-            self._model = genai.GenerativeModel(
-                model_name=self._model_name,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.3,
-                    max_output_tokens=4096,
-                ),
-            )
+            self._client = genai.Client(api_key=api_key)
             self._ready = True
             logger.info(f"Gemini provider ready (model={self._model_name})")
         except ImportError:
             logger.error(
-                "google-generativeai package not installed. "
-                "Run: pip install google-generativeai"
+                "google-genai package not installed. "
+                "Run: pip install google-genai"
             )
             self._ready = False
         except Exception as exc:
@@ -325,12 +318,14 @@ class GeminiProvider(BaseLLMProvider):
             self._ready = False
 
     async def close(self) -> None:
-        self._model = None
+        self._client = None
         self._ready = False
 
     async def ask(self, prompt: str, timeout: int = 120) -> str:
-        if not self._model or not self._ready:
+        if not self._client or not self._ready:
             raise RuntimeError("Gemini provider is not ready")
+
+        from google.genai import types
 
         last_exc: Exception | None = None
 
@@ -338,7 +333,14 @@ class GeminiProvider(BaseLLMProvider):
             await self._rate_limiter.acquire()
 
             try:
-                response = await self._model.generate_content_async(prompt)
+                response = await self._client.aio.models.generate_content(
+                    model=self._model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.3,
+                        max_output_tokens=8192,
+                    ),
+                )
                 return response.text or ""
 
             except Exception as exc:

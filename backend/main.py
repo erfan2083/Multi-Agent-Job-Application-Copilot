@@ -19,14 +19,23 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.agent import JobHunterAgent
+from backend.auth import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    require_current_user,
+    verify_password,
+)
 from backend.config import settings
 from backend.database import (
+    Application,
     JobAlert,
     JobListing,
     ResumeProfile,
     SavedSearch,
     SearchPreference,
     SessionLocal,
+    User,
     get_db,
     init_db,
 )
@@ -43,6 +52,10 @@ from backend.models import (
     SavedSearchOut,
     SavedSearchUpdate,
     SearchRequest,
+    TokenResponse,
+    UserLogin,
+    UserOut,
+    UserRegister,
 )
 from backend.tools.auto_apply import (
     AutoApplyEngine,
@@ -163,10 +176,58 @@ def _saved_search_to_out(s: SavedSearch) -> dict:
     }
 
 
+# ── Auth Endpoints ────────────────────────────────────────────────
+
+@app.post("/api/auth/register", response_model=TokenResponse)
+async def register(data: UserRegister, db: Session = Depends(get_db)):
+    """Register a new user account."""
+    existing = db.query(User).filter(User.email == data.email).first()
+    if existing:
+        raise HTTPException(400, "Email already registered")
+
+    user = User(
+        email=data.email,
+        hashed_password=hash_password(data.password),
+        full_name=data.full_name,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(user.id)
+    return TokenResponse(
+        access_token=token,
+        user=UserOut.model_validate(user),
+    )
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login(data: UserLogin, db: Session = Depends(get_db)):
+    """Login with email and password."""
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user or not verify_password(data.password, user.hashed_password):
+        raise HTTPException(401, "Invalid email or password")
+
+    token = create_access_token(user.id)
+    return TokenResponse(
+        access_token=token,
+        user=UserOut.model_validate(user),
+    )
+
+
+@app.get("/api/auth/me", response_model=UserOut)
+async def get_me(user: User = Depends(require_current_user)):
+    """Return the currently authenticated user."""
+    return UserOut.model_validate(user)
+
+
 # ── Resume Endpoints ───────────────────────────────────────────────
 
 @app.post("/api/upload-resume")
-async def upload_resume(file: UploadFile = File(...)):
+async def upload_resume(
+    file: UploadFile = File(...),
+    current_user: User | None = Depends(get_current_user),
+):
     """Upload and analyze a resume (PDF or DOCX)."""
     if not file.filename:
         raise HTTPException(400, "No file provided")
@@ -190,10 +251,14 @@ async def upload_resume(file: UploadFile = File(...)):
         logger.error(f"Resume analysis failed: {e}")
         raise HTTPException(500, f"Resume analysis failed: {e}")
 
-    # Return the profile
+    # Associate with logged-in user and return the profile
     db = SessionLocal()
     try:
         resume = db.query(ResumeProfile).filter_by(id=resume_id).first()
+        if resume and current_user:
+            resume.user_id = current_user.id
+            db.commit()
+            db.refresh(resume)
         return {
             "message": "رزومه با موفقیت آنالیز شد",
             "resume": _resume_to_out(resume),
@@ -204,9 +269,15 @@ async def upload_resume(file: UploadFile = File(...)):
 
 
 @app.get("/api/resumes")
-async def list_resumes(db: Session = Depends(get_db)):
-    """List all uploaded resumes."""
-    resumes = db.query(ResumeProfile).order_by(ResumeProfile.id.desc()).all()
+async def list_resumes(
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
+    """List uploaded resumes (scoped to current user if authenticated)."""
+    query = db.query(ResumeProfile)
+    if current_user:
+        query = query.filter(ResumeProfile.user_id == current_user.id)
+    resumes = query.order_by(ResumeProfile.id.desc()).all()
     return [_resume_to_out(r) for r in resumes]
 
 
@@ -220,6 +291,24 @@ async def get_resume(resume_id: int, db: Session = Depends(get_db)):
         "resume": _resume_to_out(resume),
         "profile": resume.to_profile_dict(),
     }
+
+
+@app.delete("/api/resumes/{resume_id}")
+async def delete_resume(resume_id: int, db: Session = Depends(get_db)):
+    """Delete a resume and its associated preferences and job listings."""
+    resume = db.query(ResumeProfile).filter_by(id=resume_id).first()
+    if not resume:
+        raise HTTPException(404, "Resume not found")
+
+    # Delete related data
+    db.query(SearchPreference).filter(
+        SearchPreference.resume_id == resume_id
+    ).delete()
+    db.query(JobListing).filter(JobListing.resume_id == resume_id).delete()
+    db.query(SavedSearch).filter(SavedSearch.resume_id == resume_id).delete()
+    db.delete(resume)
+    db.commit()
+    return {"message": "رزومه و داده‌های مرتبط حذف شد"}
 
 
 # ── Preferences Endpoints ──────────────────────────────────────────
@@ -700,8 +789,6 @@ async def list_applications(
     db: Session = Depends(get_db),
 ):
     """List application records."""
-    from backend.database import Application
-
     query = db.query(Application).order_by(Application.id.desc())
     if job_id:
         query = query.filter(Application.job_id == job_id)
