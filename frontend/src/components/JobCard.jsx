@@ -2,14 +2,14 @@ import { useState, useRef } from "react";
 import { updateJobStatus, markJobViewed, applyToJob } from "../api";
 
 const SITE_LABELS = {
+  "jobspy-indeed": "Indeed",
+  "jobspy-linkedin": "LinkedIn",
+  "jobspy-glassdoor": "Glassdoor",
+  "jobspy-google": "Google",
+  remotive: "Remotive",
   jobinja: "Jobinja",
   irantalent: "IranTalent",
   jobvision: "JobVision",
-  linkedin: "LinkedIn",
-  indeed: "Indeed",
-  remotive: "Remotive",
-  weworkremotely: "WWR",
-  wellfound: "Wellfound",
 };
 
 // Sites that support auto-apply

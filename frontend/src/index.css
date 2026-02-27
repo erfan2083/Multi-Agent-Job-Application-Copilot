@@ -47,36 +47,24 @@ body {
   @apply bg-teal-100 text-teal-800;
 }
 
-.badge-linkedin {
+.badge-jobspy-indeed {
+  @apply bg-indigo-100 text-indigo-800;
+}
+
+.badge-jobspy-linkedin {
   @apply bg-sky-100 text-sky-800;
 }
 
-.badge-indeed {
-  @apply bg-indigo-100 text-indigo-800;
+.badge-jobspy-glassdoor {
+  @apply bg-lime-100 text-lime-800;
+}
+
+.badge-jobspy-google {
+  @apply bg-amber-100 text-amber-800;
 }
 
 .badge-remotive {
   @apply bg-emerald-100 text-emerald-800;
-}
-
-.badge-weworkremotely {
-  @apply bg-orange-100 text-orange-800;
-}
-
-.badge-wellfound {
-  @apply bg-rose-100 text-rose-800;
-}
-
-.badge-glassdoor {
-  @apply bg-lime-100 text-lime-800;
-}
-
-.badge-google {
-  @apply bg-amber-100 text-amber-800;
-}
-
-.badge-jobspy {
-  @apply bg-violet-100 text-violet-800;
 }
 
 /* Scrollbar styling */

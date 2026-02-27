@@ -443,34 +443,37 @@ class JobHunterAgent:
                 job_dict["match_score"] = score_result.score
                 job_dict["match_reason"] = score_result.reason
 
-                # Only keep jobs above minimum score
-                if score_result.score >= settings.min_match_score:
-                    scored_jobs.append(job_dict)
-
-                    # Save to database
-                    existing = (
-                        db.query(JobListing)
-                        .filter_by(url=job_dict["url"])
-                        .first()
+                # Save ALL jobs to database (frontend has its own score filter)
+                existing = (
+                    db.query(JobListing)
+                    .filter_by(url=job_dict["url"])
+                    .first()
+                )
+                if existing:
+                    db_id = existing.id
+                else:
+                    listing = JobListing(
+                        title=job_dict["title"],
+                        company=job_dict["company"],
+                        location=job_dict["location"],
+                        is_remote=job_dict.get("is_remote", False),
+                        salary_range=job_dict.get("salary_range", ""),
+                        description=job_dict.get("description", ""),
+                        url=job_dict["url"],
+                        source_site=job_dict["source_site"],
+                        match_score=score_result.score,
+                        match_reason=score_result.reason,
+                        resume_id=resume_id,
                     )
-                    if not existing:
-                        listing = JobListing(
-                            title=job_dict["title"],
-                            company=job_dict["company"],
-                            location=job_dict["location"],
-                            is_remote=job_dict.get("is_remote", False),
-                            salary_range=job_dict.get("salary_range", ""),
-                            description=job_dict.get("description", ""),
-                            url=job_dict["url"],
-                            source_site=job_dict["source_site"],
-                            match_score=score_result.score,
-                            match_reason=score_result.reason,
-                            resume_id=resume_id,
-                        )
-                        db.add(listing)
+                    db.add(listing)
+                    db.flush()  # Get the auto-generated id
+                    db_id = listing.id
 
-                    # Stream each qualifying job to frontend
-                    yield {"type": "job", "data": job_dict}
+                job_dict["id"] = db_id
+                scored_jobs.append(job_dict)
+
+                # Stream every job to frontend
+                yield {"type": "job", "data": job_dict}
 
                 # Progress update every 5 jobs
                 if (i + 1) % 5 == 0:
@@ -586,40 +589,49 @@ class JobHunterAgent:
                 job_dict["match_score"] = score_result.score
                 job_dict["match_reason"] = score_result.reason
 
-                if score_result.score >= settings.min_match_score:
-                    is_new = job_dict["url"] not in existing_urls
+                is_new = job_dict["url"] not in existing_urls
 
-                    if is_new:
-                        # Save the new job listing
-                        listing = JobListing(
-                            title=job_dict["title"],
-                            company=job_dict["company"],
-                            location=job_dict["location"],
-                            is_remote=job_dict.get("is_remote", False),
-                            salary_range=job_dict.get("salary_range", ""),
-                            description=job_dict.get("description", ""),
-                            url=job_dict["url"],
-                            source_site=job_dict["source_site"],
-                            match_score=score_result.score,
-                            match_reason=score_result.reason,
-                            resume_id=search.resume_id,
-                        )
-                        db.add(listing)
-                        db.flush()  # Get the id
+                if is_new:
+                    # Save the new job listing
+                    listing = JobListing(
+                        title=job_dict["title"],
+                        company=job_dict["company"],
+                        location=job_dict["location"],
+                        is_remote=job_dict.get("is_remote", False),
+                        salary_range=job_dict.get("salary_range", ""),
+                        description=job_dict.get("description", ""),
+                        url=job_dict["url"],
+                        source_site=job_dict["source_site"],
+                        match_score=score_result.score,
+                        match_reason=score_result.reason,
+                        resume_id=search.resume_id,
+                    )
+                    db.add(listing)
+                    db.flush()  # Get the id
+                    job_dict["id"] = listing.id
 
-                        # Create an alert
-                        alert = JobAlert(
-                            saved_search_id=saved_search_id,
-                            job_id=listing.id,
-                        )
-                        db.add(alert)
-                        new_alert_count += 1
+                    # Create an alert
+                    alert = JobAlert(
+                        saved_search_id=saved_search_id,
+                        job_id=listing.id,
+                    )
+                    db.add(alert)
+                    new_alert_count += 1
 
-                        existing_urls.add(job_dict["url"])
+                    existing_urls.add(job_dict["url"])
+                else:
+                    # Existing job — look up its DB id
+                    existing_listing = (
+                        db.query(JobListing)
+                        .filter_by(url=job_dict["url"])
+                        .first()
+                    )
+                    if existing_listing:
+                        job_dict["id"] = existing_listing.id
 
-                    new_jobs.append(job_dict)
-                    job_dict["is_new"] = is_new
-                    yield {"type": "job", "data": job_dict}
+                new_jobs.append(job_dict)
+                job_dict["is_new"] = is_new
+                yield {"type": "job", "data": job_dict}
 
                 if (i + 1) % 5 == 0:
                     yield {

@@ -9,14 +9,14 @@ const SORT_OPTIONS = [
 
 const SOURCE_OPTIONS = [
   { value: "", label: "همه سایت‌ها" },
+  { value: "jobspy-indeed", label: "Indeed" },
+  { value: "jobspy-linkedin", label: "LinkedIn" },
+  { value: "jobspy-glassdoor", label: "Glassdoor" },
+  { value: "jobspy-google", label: "Google" },
+  { value: "remotive", label: "Remotive" },
   { value: "jobinja", label: "Jobinja" },
   { value: "irantalent", label: "IranTalent" },
   { value: "jobvision", label: "JobVision" },
-  { value: "linkedin", label: "LinkedIn" },
-  { value: "indeed", label: "Indeed" },
-  { value: "remotive", label: "Remotive" },
-  { value: "weworkremotely", label: "WeWorkRemotely" },
-  { value: "wellfound", label: "Wellfound" },
 ];
 
 const STATUS_OPTIONS = [
