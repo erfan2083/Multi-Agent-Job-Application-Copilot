@@ -202,12 +202,13 @@ export async function searchJobs(resumeId, preferencesId, onEvent) {
 /**
  * Get stored job listings with optional filters.
  */
-export async function getJobs({ resumeId, minScore, source, sortBy } = {}) {
+export async function getJobs({ resumeId, minScore, source, sortBy, status } = {}) {
   const params = new URLSearchParams();
   if (resumeId) params.set("resume_id", resumeId);
   if (minScore) params.set("min_score", minScore);
   if (source) params.set("source", source);
   if (sortBy) params.set("sort_by", sortBy);
+  if (status) params.set("status", status);
 
   const res = await fetch(`${BASE_URL}/jobs?${params}`, {
     headers: authHeaders(),
