@@ -6,6 +6,7 @@ import ResumeUpload from "./components/ResumeUpload";
 import JobDashboard from "./components/JobDashboard";
 import StatusStream from "./components/StatusStream";
 import SavedSearches from "./components/SavedSearches";
+import SavedJobs from "./components/SavedJobs";
 import AlertsPanel from "./components/AlertsPanel";
 import ApplicationsPanel from "./components/ApplicationsPanel";
 import LLMSelector from "./components/LLMSelector";
@@ -309,7 +310,7 @@ function App() {
                 : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            جستجوهای ذخیره‌شده
+            ذخیره‌شده‌ها
           </button>
           <button
             onClick={() => setActiveTab("alerts")}
@@ -413,7 +414,11 @@ function App() {
         )}
 
         {activeTab === "saved" && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {/* Saved Jobs (bookmarked from dashboard) */}
+            <SavedJobs resumeId={resume?.id} />
+
+            {/* Saved Searches (re-runnable queries) */}
             <SavedSearches
               resumeId={resume?.id}
               preferencesId={preferencesId}
